@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: ring-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - /mnt/user/appdata/ring-unraid/mosquitto/config:/mosquitto/config
+      - /mnt/user/appdata/ring-unraid/mosquitto/data:/mosquitto/data
+      - /mnt/user/appdata/ring-unraid/mosquitto/log:/mosquitto/log
+
+  ring-mqtt:
+    image: tsightler/ring-mqtt:latest
+    container_name: ring-mqtt
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    ports:
+      - "55123:55123"
+    volumes:
+      - /mnt/user/appdata/ring-unraid/ring-mqtt:/data
+    environment:
+      - MQTTHOST=mosquitto
+      - MQTTPORT=1883
+      - ENABLECAMERAS=true
+      - SNAPSHOTMODE=interval
+
+  snapshot-saver:
+    build: ./snapshot-saver
+    container_name: ring-snapshot-saver
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+      - ring-mqtt
+    volumes:
+      - /mnt/user/appdata/ring-unraid/snapshots:/snapshots
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=1883

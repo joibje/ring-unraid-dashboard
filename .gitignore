@@ -1,0 +1,5 @@
+*.jpg
+*.env
+names.json
+cameras.json
+*_timestamp.txt
