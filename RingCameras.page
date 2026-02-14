@@ -3,13 +3,36 @@ Title="Ring Cameras"
 Refresh="60"
 ---
 <?php
+// ==============================================
+// Ring Cameras - Unraid Dashboard Page
+// ==============================================
+// This page displays snapshots from Ring cameras.
+// It reads jpg files saved by the snapshot-saver container.
+// Auto-refreshes every 60 seconds (set in Refresh above).
+// ==============================================
+
+// this is where the snapshot-saver saves the jpg files
 $snapshotDir = "/mnt/user/appdata/ring-unraid/snapshots";
+
+// we'll build an array of cameras to display
 $cameras = [];
+
+// check if the snapshot directory exists
 if (is_dir($snapshotDir)) {
+
+    // find all jpg files in the directory
     foreach (glob("$snapshotDir/*.jpg") as $file) {
+
+        // get the camera name from the filename (e.g. "Front_Door" from "Front_Door.jpg")
         $name = basename($file, ".jpg");
+
+        // check if there's a timestamp file for this camera
+        // the snapshot-saver creates these alongside the jpg files
         $timestampFile = "$snapshotDir/{$name}_timestamp.txt";
         $timestamp = file_exists($timestampFile) ? trim(file_get_contents($timestampFile)) : "";
+
+        // add this camera to our display list
+        // we replace underscores with spaces for nicer display
         $cameras[] = [
             "name" => str_replace("_", " ", $name),
             "file" => $file,
@@ -18,21 +41,62 @@ if (is_dir($snapshotDir)) {
     }
 }
 ?>
+
+<!-- keep the CSS minimal - just enough to look decent -->
 <style>
-.rc{display:flex;flex-wrap:wrap;gap:12px;padding:10px}
-.rc-cam{flex:1;min-width:300px;max-width:600px;position:relative}
-.rc-cam img{width:100%;display:block;border-radius:4px}
-.rc-label{position:absolute;bottom:0;left:0;right:0;padding:6px 10px;background:rgba(0,0,0,.6);display:flex;justify-content:space-between;font-size:12px;border-radius:0 0 4px 4px}
-.rc-name{color:#fff;font-weight:bold}
-.rc-time{color:#aaa}
+/* container: flexbox so cameras sit side by side */
+.rc { display: flex; flex-wrap: wrap; gap: 12px; padding: 10px }
+
+/* each camera card: fills available space, has a max width */
+.rc-cam { flex: 1; min-width: 300px; max-width: 600px; position: relative }
+
+/* the snapshot image: full width, rounded corners */
+.rc-cam img { width: 100%; display: block; border-radius: 4px }
+
+/* overlay label at the bottom of each image */
+/* shows camera name on the left, timestamp on the right */
+.rc-label {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 6px 10px;
+    background: rgba(0,0,0,.6);
+    display: flex; justify-content: space-between;
+    font-size: 12px;
+    border-radius: 0 0 4px 4px
+}
+
+/* camera name = white and bold */
+.rc-name { color: #fff; font-weight: bold }
+
+/* timestamp = subtle gray */
+.rc-time { color: #aaa }
 </style>
+
 <div class="rc">
 <?php if (empty($cameras)): ?>
-<p style="color:#999">No Ring cameras found. <a href="http://<?=$_SERVER['SERVER_ADDR']?>:55123" target="_blank">Open ring-mqtt web UI</a> to authenticate.</p>
+
+    <!-- no cameras found - show a helpful message -->
+    <p style="color:#999">
+        No Ring cameras found.
+        <a href="http://<?=$_SERVER['SERVER_ADDR']?>:55123" target="_blank">Open ring-mqtt web UI</a>
+        to authenticate with your Ring account.
+    </p>
+
 <?php else: foreach ($cameras as $cam): ?>
-<div class="rc-cam">
-<img src="data:image/jpeg;base64,<?=base64_encode(file_get_contents($cam['file']))?>" alt="<?=htmlspecialchars($cam['name'])?>">
-<div class="rc-label"><span class="rc-name"><?=htmlspecialchars($cam['name'])?></span><span class="rc-time"><?=htmlspecialchars($cam['timestamp'])?></span></div>
-</div>
+
+    <!-- one card per camera -->
+    <div class="rc-cam">
+
+        <!-- embed the snapshot as a base64 image -->
+        <!-- yes this makes the page bigger but it's way simpler than serving static files -->
+        <img src="data:image/jpeg;base64,<?=base64_encode(file_get_contents($cam['file']))?>"
+             alt="<?=htmlspecialchars($cam['name'])?>">
+
+        <!-- overlay with name and timestamp -->
+        <div class="rc-label">
+            <span class="rc-name"><?=htmlspecialchars($cam['name'])?></span>
+            <span class="rc-time"><?=htmlspecialchars($cam['timestamp'])?></span>
+        </div>
+    </div>
+
 <?php endforeach; endif; ?>
 </div>

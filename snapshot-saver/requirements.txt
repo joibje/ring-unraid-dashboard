@@ -1,1 +1,4 @@
+# we only need ONE library: paho-mqtt
+# it lets us talk to the Mosquitto MQTT broker
+# version 2.0+ because the API changed and we use the new one
 paho-mqtt>=2.0.0

@@ -1,42 +1,95 @@
+# ==============================================
+# Ring Unraid Dashboard - Docker Compose
+# ==============================================
+# This spins up 3 containers:
+#   1. mosquitto  - MQTT broker (the message bus)
+#   2. ring-mqtt  - talks to Ring cloud, publishes snapshots to MQTT
+#   3. snapshot-saver - listens to MQTT, saves snapshots as jpg files
+#
+# The Unraid dashboard page then reads those jpg files. Simple.
+# ==============================================
+
 version: "3.8"
 
 services:
+
+  # ------------------------------------------
+  # MOSQUITTO - MQTT Message Broker
+  # ------------------------------------------
+  # Think of this as a mailbox.
+  # ring-mqtt puts snapshot messages IN the mailbox.
+  # snapshot-saver takes them OUT.
+  # They never talk to each other directly.
   mosquitto:
     image: eclipse-mosquitto:latest
     container_name: ring-mosquitto
-    restart: unless-stopped
+    restart: unless-stopped       # auto-restart if it crashes or server reboots
+
     ports:
-      - "1883:1883"
+      - "1883:1883"               # MQTT default port
+
     volumes:
+      # config - how mosquitto behaves
       - /mnt/user/appdata/ring-unraid/mosquitto/config:/mosquitto/config
+
+      # data - persistent messages survive restarts
       - /mnt/user/appdata/ring-unraid/mosquitto/data:/mosquitto/data
+
+      # log - check this if something seems broken
       - /mnt/user/appdata/ring-unraid/mosquitto/log:/mosquitto/log
 
+  # ------------------------------------------
+  # RING-MQTT - Ring Cloud to MQTT Bridge
+  # ------------------------------------------
+  # This connects to Ring's servers using your account.
+  # It grabs snapshots from your cameras and publishes
+  # them as MQTT messages.
+  #
+  # IMPORTANT: You need to log in the first time!
+  # Open http://YOUR_SERVER_IP:55123 in your browser
+  # and enter your Ring email + password + 2FA code.
   ring-mqtt:
     image: tsightler/ring-mqtt:latest
     container_name: ring-mqtt
-    restart: unless-stopped
-    depends_on:
-      - mosquitto
-    ports:
-      - "55123:55123"
-    volumes:
-      - /mnt/user/appdata/ring-unraid/ring-mqtt:/data
-    environment:
-      - MQTTHOST=mosquitto
-      - MQTTPORT=1883
-      - ENABLECAMERAS=true
-      - SNAPSHOTMODE=interval
+    restart: unless-stopped       # auto-restart if it crashes
 
-  snapshot-saver:
-    build: ./snapshot-saver
-    container_name: ring-snapshot-saver
-    restart: unless-stopped
     depends_on:
-      - mosquitto
-      - ring-mqtt
+      - mosquitto                 # wait for mosquitto to start first
+
+    ports:
+      - "55123:55123"             # web UI for Ring login / authentication
+
     volumes:
-      - /mnt/user/appdata/ring-unraid/snapshots:/snapshots
+      # this is where ring-mqtt stores its config and auth tokens
+      # IMPORTANT: this must persist or you'll have to log in again
+      - /mnt/user/appdata/ring-unraid/ring-mqtt:/data
+
     environment:
-      - MQTT_HOST=mosquitto
-      - MQTT_PORT=1883
+      - MQTTHOST=mosquitto        # talk to the mosquitto container above
+      - MQTTPORT=1883             # on the default MQTT port
+      - ENABLECAMERAS=true        # yes we want camera snapshots
+      - SNAPSHOTMODE=interval     # take snapshots on a timer (not just on motion)
+
+  # ------------------------------------------
+  # SNAPSHOT SAVER - MQTT to JPG Files
+  # ------------------------------------------
+  # This listens for snapshot messages on MQTT
+  # and saves them as regular jpg files on disk.
+  # The Unraid dashboard page then displays these files.
+  snapshot-saver:
+    build: ./snapshot-saver       # build from our Dockerfile
+    container_name: ring-snapshot-saver
+    restart: unless-stopped       # auto-restart if it crashes
+
+    depends_on:
+      - mosquitto                 # need MQTT to be running
+      - ring-mqtt                 # need ring-mqtt to be publishing
+
+    volumes:
+      # this is where snapshots get saved as jpg files
+      # the Unraid dashboard page reads from this same folder
+      - /mnt/user/appdata/ring-unraid/snapshots:/snapshots
+
+    environment:
+      - MQTT_HOST=mosquitto       # talk to the mosquitto container
+      - MQTT_PORT=1883            # on the default port
